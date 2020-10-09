@@ -115,8 +115,10 @@ def run():
         p.append(Process(target=client, args=(worker_name, worker_num,)))
         p[worker_id].start()
 
-    worker_id = worker_num + 1
-    worker_name = name + '_' + str(worker_id)
+    worker_id = worker_num 
+
+    worker_name = name + '_' + str(worker_id) + '_' + 'httpServer'
+
     print(worker_name + ' start')
     p.append(Process(target=httpServer(), args=(worker_name, worker_num,)))
     p[worker_id].start()

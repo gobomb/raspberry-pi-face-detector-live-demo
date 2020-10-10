@@ -4,4 +4,4 @@ RUN pip3 install protobuf -i https://pypi.doubanio.com/simple
 WORKDIR /root
 ADD detector/detector.py ./detector/detector.py
 ADD rpc ./rpc
-ENTRYPOINT ["python3", "/root/detector/detector.py"]
+ENTRYPOINT ["python3", "-u", "/root/detector/detector.py"]

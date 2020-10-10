@@ -160,6 +160,8 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         Global = rpc_helper.getVal()
+        known_face_encodings = Global.known_face_encodings
+        known_face_names = Global.known_face_names
 
         filename = Path(os.path.basename(self.path))
         file_length = int(self.headers['Content-Length'])
@@ -175,8 +177,10 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
                 output_file.write(self.rfile.read(file_length))
             imageEncoding = face_recognition.face_encodings(face_recognition.load_image_file(str(output)))[0]
             # with faceLock:
-            Global.known_face_encodings.append(imageEncoding)
-            Global.known_face_names.append(str(filename.with_suffix('')))
+            known_face_encodings.append(imageEncoding)
+            known_face_names.append(str(filename.with_suffix('')))
+            Global.known_face_encodings = known_face_encodings
+            Global.known_face_names = known_face_names
             self.send_response(201, 'Created')
             self.end_headers()
 

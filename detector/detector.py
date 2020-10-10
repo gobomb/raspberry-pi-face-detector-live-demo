@@ -9,6 +9,7 @@ import traceback
 import grpc
 import os
 from multiprocessing import Process, Manager, cpu_count, set_start_method
+import threading
 import sys
 
 sys.path.append("rpc")
@@ -36,8 +37,10 @@ def decode_frame(ndarray):
 
 def find_face(rgb_small_frame):
     # Find all the faces and face encodings in the current frame of video
-    face_locations = []
-    face_encodings = []
+    Global = rpc_helper.getVal()
+    known_face_encodings = Global.known_face_encodings
+    known_face_names = Global.known_face_names
+
     face_names = []
     face_locations = face_recognition.face_locations(rgb_small_frame)
     face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
@@ -95,9 +98,26 @@ def send_message(stub, worker_id):
 #         except Exception as ex:
 #             traceback.print_exc()
 
+
+class helper():
+    def setVal(self, Global, w):
+        helper.Global = Global
+
+    def getVal(self):
+        return helper.Global
+
+rpc_helper = helper()
+
 def run():
     p = []
     worker_num = 1
+    Global = Manager().Namespace()
+    # Create arrays of known face encodings and their names
+    # faceLock = threading.Lock()
+    Global.known_face_encodings = []
+    Global.known_face_names = []
+    rpc_helper.setVal(Global)
+
     if 'PODNAME' in os.environ:
         name = os.environ['PODNAME']
     else:
@@ -112,7 +132,7 @@ def run():
     for worker_id in range(0, worker_num):
         worker_name = name + '_' + str(worker_id)
         print(worker_name + ' start')
-        p.append(Process(target=client, args=(worker_name, worker_num,)))
+        p.append(threading.Thread(target=client, args=(worker_name, worker_num,)))
         p[worker_id].start()
 
     worker_id = worker_num 
@@ -120,7 +140,7 @@ def run():
     worker_name = name + '_' + str(worker_id) + '_' + 'httpServer'
 
     print(worker_name + ' start')
-    p.append(Process(target=httpServer(), args=(worker_name, worker_num,)))
+    p.append(threading.Thread(target=httpServer(), args=(worker_name, worker_num,)))
     p[worker_id].start()
 
 def client(worker_id, worker_num):
@@ -134,18 +154,15 @@ def client(worker_id, worker_num):
         except Exception as ex:
             traceback.print_exc()
 
-
-
-# Create arrays of known face encodings and their names
-# faceLock = threading.Lock()
-known_face_encodings = []
-known_face_names = []
-
 class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
     def log_request(self, format, *args):
         return
 
     def do_POST(self):
+        Global = rpc_helper.getVal()
+        known_face_encodings = Global.known_face_encodings
+        known_face_names = Global.known_face_names
+
         filename = Path(os.path.basename(self.path))
         file_length = int(self.headers['Content-Length'])
         if str(filename) == 'frame.jpg':

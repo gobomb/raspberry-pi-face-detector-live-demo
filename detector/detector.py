@@ -100,7 +100,7 @@ def send_message(stub, worker_id):
 
 
 class helper():
-    def setVal(self, Global, w):
+    def setVal(self, Global):
         helper.Global = Global
 
     def getVal(self):

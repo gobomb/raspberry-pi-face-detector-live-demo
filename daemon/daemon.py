@@ -39,7 +39,7 @@ def decode_frame(nda_bytes):
 
 class FaceService(face_pb2_grpc.FaceServiceServicer):
     def GetFrameStream(self, request, context):
-       Global = rpc_helper.getVal()
+        Global = rpc_helper.getVal()
         Global.is_called = True
         print("\rIncomming connection which ID is: {0}".format(request.ID))
         try:
@@ -121,27 +121,8 @@ def serve(Global):
         if Global.is_exit:
             break
 
-
-def frame_helper(worker_id, read_frame_list, write_frame_list, Global, worker_num):
-    print("frame_helper {0}/{1} start".format(worker_id, worker_num))
-
-    while not Global.is_exit:
-        # Wait to read
-        while Global.read_num != worker_id or Global.read_num != prev_id(Global.buff_num,
-                                                                         worker_num):
-
-            # If the user has requested to end the app, then stop waiting for webcam frames
-            if Global.is_exit:
-                break
-
-            time.sleep(0.01)
-
-        display(worker_id, read_frame_list, write_frame_list, Global, worker_num)
-
-
 def setFrame(Global,frame):
     Global.frame = frame
-
 
 def displayResult(Global,frame_process):
     face_names = Global.face_names
@@ -174,13 +155,14 @@ def capture1(Global):
 
         if process_this_frame:
             setFrame(Global,frame)
-            displayResult(Global)
+            displayResult(Global,frame)
 
         process_this_frame = not process_this_frame
 
         cv2.namedWindow("Video", cv2.WND_PROP_FULLSCREEN)
         cv2.setWindowProperty("Video", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         # Display the resulting image
+        frame = cv2.flip(frame, 0)
         cv2.imshow('Video', frame)
 
         # Hit any key to quit!
@@ -205,7 +187,7 @@ def run():
     write_frame_list = Manager().dict()
 
     Process(target=capture1, args=(Global,)).start()
-    Process(target=serve, args=(  Global,).start())
+    serve(Global)
 
 if __name__ == '__main__':
     # threading.Thread(target=scanDetector).start()

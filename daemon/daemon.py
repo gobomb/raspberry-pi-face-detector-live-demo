@@ -39,13 +39,13 @@ def decode_frame(nda_bytes):
 
 class FaceService(face_pb2_grpc.FaceServiceServicer):
     def GetFrameStream(self, request, context):
-        worker_id, read_frame_list, write_frame_list, Global, worker_num = rpc_helper.getVal()
+       Global = rpc_helper.getVal()
         Global.is_called = True
         print("\rIncomming connection which ID is: {0}".format(request.ID))
         try:
             while not Global.is_exit:
                 # Read a single frame from frame list
-                frame_process = read_frame_list[Global.read_num]
+                frame_process = Global.frame
 
                 # Convert the image from BGR color (which OpenCV uses) to RGB color (which face_recognition uses)
                 rgb_frame = frame_process[:, :, ::-1]
@@ -67,7 +67,7 @@ class FaceService(face_pb2_grpc.FaceServiceServicer):
             print("\rIncomming connection closed which ID: {0}".format(request.ID))
 
     def DisplayLocations(self, request_iterator, context):
-        worker_id, read_frame_list, write_frame_list, Global, worker_num = rpc_helper.getVal()
+        Global = rpc_helper.getVal()
         Global.is_called = True
 
         try:
@@ -97,54 +97,20 @@ class FaceService(face_pb2_grpc.FaceServiceServicer):
 
 
 class helper():
-    def setVal(self, worker_id, read_frame_list, write_frame_list, Global, worker_num):
-        helper.worker_id = worker_id
-        helper.read_frame_list = read_frame_list
-        helper.write_frame_list = write_frame_list
+    def setVal(self, Global, ):
         helper.Global = Global
-        helper.worker_num = worker_num
 
     def getVal(self):
-        return helper.worker_id, helper.read_frame_list, helper.write_frame_list, helper.Global, helper.worker_num
+        return helper.Global
 
 
 rpc_helper = helper()
 
 
-def display(worker_id, read_frame_list, write_frame_list, Global, worker_num):
-    face_names = Global.face_names
-    face_locations = Global.face_locations
-
-    # Read a single frame from frame list
-    frame_process = read_frame_list[worker_id]
-    # Expect next worker to read frame
-    Global.read_num = next_id(Global.read_num, worker_num)
-
-    # Display the results
-
-    for (top, right, bottom, left), name in zip(face_locations, face_names):
-        # Draw a box around the face
-        cv2.rectangle(frame_process, (left, top), (right, bottom), (0, 0, 255), 2)
-
-        # Draw a label with a name below the face
-        cv2.rectangle(frame_process, (left, bottom - 35), (right, bottom), (0, 0, 255), cv2.FILLED)
-        font = cv2.FONT_HERSHEY_DUPLEX
-        cv2.putText(frame_process, name, (left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1)
-
-    # Send frame to global
-    write_frame_list[worker_id] = frame_process
-
-    # Expect next worker to write frame
-    Global.write_num = next_id(Global.write_num, worker_num)
-
-
-
-
-
-def serve(worker_id, read_frame_list, write_frame_list, Global, worker_num):
+def serve(Global):
     print("start serving rpc")
-    rpc_helper.setVal(worker_id, read_frame_list, write_frame_list, Global, worker_num)
-    grpcServer = grpc.server(futures.ThreadPoolExecutor(max_workers=_RPC_WORKER))
+    rpc_helper.setVal( Global, )
+    grpcServer = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
     face_pb2_grpc.add_FaceServiceServicer_to_server(FaceService(), grpcServer)
 
     grpcServer.add_insecure_port("{0}:{1}".format(_HOST, _PORT))
@@ -173,52 +139,59 @@ def frame_helper(worker_id, read_frame_list, write_frame_list, Global, worker_nu
         display(worker_id, read_frame_list, write_frame_list, Global, worker_num)
 
 
-# Get next worker's id
-def next_id(current_id, worker_num):
-    if current_id == worker_num:
-        return 1
-    else:
-        return current_id + 1
+def setFrame(Global,frame):
+    Global.frame = frame
 
 
-# Get previous worker's id
-def prev_id(current_id, worker_num):
-    if current_id == 1:
-        return worker_num
-    else:
-        return current_id - 1
+def displayResult(Global,frame_process):
+    face_names = Global.face_names
+    face_locations = Global.face_locations
 
+    # Display the results
 
-# A subprocess use to capture frames.
-def capture(read_frame_list, Global, worker_num):
+    for (top, right, bottom, left), name in zip(face_locations, face_names):
+        # Draw a box around the face
+        cv2.rectangle(frame_process, (left, top), (right, bottom), (0, 0, 255), 2)
+
+        # Draw a label with a name below the face
+        cv2.rectangle(frame_process, (left, bottom - 35), (right, bottom), (0, 0, 255), cv2.FILLED)
+        font = cv2.FONT_HERSHEY_DUPLEX
+        cv2.putText(frame_process, name, (left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1)
+
+def capture1(Global):
     # Get a reference to webcam #0 (the default one)
     video_capture = cv2.VideoCapture(0)
-    print("capture start")
 
-    # video_capture.set(3, 640)  # Width of the frames in the video stream.
-    # video_capture.set(4, 480)  # Height of the frames in the video stream.
-    # video_capture.set(5, 40) # Frame rate.
-    print("Width: %d, Height: %d, FPS: %d" % (video_capture.get(3), video_capture.get(4), video_capture.get(5)))
+    # Initialize some variables
+    process_this_frame = True
 
-    while not Global.is_exit:
-        # If it's time to read a frame
-        if Global.buff_num != next_id(Global.read_num, worker_num):
-            # Grab a single frame of video
-            ret, frame = video_capture.read()
-            read_frame_list[Global.buff_num] = frame
-            Global.buff_num = next_id(Global.buff_num, worker_num)
-        else:
-            time.sleep(0.01)
+    while True:
+        # Grab a single frame of video
+        ret, frame = video_capture.read()
 
-    # Release webcam
-    video_capture.release()
+        # Rotate 90 degrees
+        frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
+        if process_this_frame:
+            setFrame(Global,frame)
+            displayResult(Global)
+
+        process_this_frame = not process_this_frame
+
+        cv2.namedWindow("Video", cv2.WND_PROP_FULLSCREEN)
+        cv2.setWindowProperty("Video", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        # Display the resulting image
+        cv2.imshow('Video', frame)
+
+        # Hit any key to quit!
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            # Release handle to the webcam
+            video_capture.release()
+            cv2.destroyAllWindows()
+            os._exit(0)
 
 
 def run():
-    # Fix Bug on MacOS
-    if platform.system() == 'Darwin':
-        set_start_method('forkserver')
-
     # Global variables
     Global = Manager().Namespace()
     Global.buff_num = 1
@@ -231,87 +204,8 @@ def run():
     read_frame_list = Manager().dict()
     write_frame_list = Manager().dict()
 
-    # # Number of workers (subprocess use to process frames)
-    # if cpu_count() > 2:
-    #     worker_num = cpu_count() - 2  # 1 for capturing frames, 1 for rpc server
-    # else:
-    #     worker_num = 2
-
-    worker_num = 2
-
-    # Subprocess list
-    p = []
-
-    # Create a thread to capture frames (if uses subprocess, it will crash on Mac)
-    p.append(threading.Thread(target=capture, args=(read_frame_list, Global, worker_num,)))
-    p[0].start()
-
-    # Create workers
-    for worker_id in range(1, worker_num + 1):
-        p.append(Process(target=frame_helper, args=(worker_id, read_frame_list, write_frame_list, Global, worker_num,)))
-        p[worker_id].start()
-
-    # Create rpc server
-    p.append(Process(target=serve, args=(worker_num + 1, read_frame_list, write_frame_list, Global, worker_num,)))
-    p[worker_num + 1].start()
-
-    # Start to show video
-    last_num = 1
-    fps_list = []
-    tmp_time = time.time()
-    while not Global.is_exit:
-
-        while Global.write_num != last_num:
-            last_num = int(Global.write_num)
-
-            # Calculate fps
-            delay = time.time() - tmp_time
-            tmp_time = time.time()
-            fps_list.append(delay)
-            if len(fps_list) > 5 * worker_num:
-                fps_list.pop(0)
-            fps = len(fps_list) / numpy.sum(fps_list)
-
-            sys.stdout.write("\r fps: %.2f" % fps)
-            sys.stdout.flush()
-
-            dis_id = prev_id(Global.write_num, worker_num)
-            # Display the resulting image
-            cv2.imshow('Video', write_frame_list[dis_id])
-
-            uploadCapture(write_frame_list[dis_id])
-
-        # Hit 'q' on the keyboard to quit!
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            Global.is_exit = True
-            break
-
-        time.sleep(0.01)
-
-    # Quit
-    cv2.destroyAllWindows()
-
-
-lastCaptureTs = 0
-captureInterval = int(os.environ.get('CAPTURE_INTERVAL'))
-
-def uploadCapture(image):
-    try:
-        global lastCaptureTs
-        global captureInterval
-        now = time.time()
-        if now < lastCaptureTs+captureInterval:
-            return
-        cv2.imwrite("target.jpg", image)
-        lastCaptureTs = now
-        frontend = os.environ.get('FRONTEND_SVC')
-        if frontend is not None:
-            url='http://{}/upload_frame'.format(frontend)
-            files={'file': open('target.jpg','rb')}
-            r=requests.post(url,files=files)
-        print("captures a new frame")
-    except:
-        print("error arose when saving captures")
+    Process(target=capture1, args=(Global,)).start()
+    Process(target=serve, args=(  Global,).start())
 
 if __name__ == '__main__':
     # threading.Thread(target=scanDetector).start()

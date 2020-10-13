@@ -23,6 +23,11 @@ _HOST = '0.0.0.0'
 _PORT = '9900'
 _RPC_WORKER = 2
 
+gframe = []
+face_names = []
+face_locations = []
+exit = False
+
 
 def encode_frame(pb_frame):
     # numpy to bytes
@@ -39,13 +44,10 @@ def decode_frame(nda_bytes):
 
 class FaceService(face_pb2_grpc.FaceServiceServicer):
     def GetFrameStream(self, request, context):
-        Global = rpc_helper.getVal()
-        Global.is_called = True
         print("\rIncomming connection which ID is: {0}".format(request.ID))
         try:
-            while not Global.is_exit:
-                # Read a single frame from frame list
-                frame_process = Global.frame
+            while True:
+                frame_process = gframe
 
                 # Convert the image from BGR color (which OpenCV uses) to RGB color (which face_recognition uses)
                 rgb_frame = frame_process[:, :, ::-1]
@@ -60,27 +62,22 @@ class FaceService(face_pb2_grpc.FaceServiceServicer):
 
         except Exception as ex:
             traceback.print_exc()
-            Global.is_called = False
 
         finally:
-            Global.is_called = False
             print("\rIncomming connection closed which ID: {0}".format(request.ID))
 
     def DisplayLocations(self, request_iterator, context):
-        Global = rpc_helper.getVal()
-        Global.is_called = True
-
         try:
             for message in request_iterator:
                 # get face_locations, face_names
                 global face_names, face_locations
-                face_names = message.Face_names
-                face_locations = []
+                l_face_names = message.Face_names
+                l_face_locations = []
                 for i in range(0, len(message.Face_locations)):
                     face_locations.append(tuple(message.Face_locations[i].Loc))
 
-                Global.face_names = face_names
-                Global.face_locations = face_locations
+                face_names = l_face_names
+                face_locations = l_face_locations
 
             return face_pb2.LocationResponse(
                 Status=face_pb2.STATUS_OK,
@@ -91,25 +88,11 @@ class FaceService(face_pb2_grpc.FaceServiceServicer):
             print("errMore=\"" + details + "\"")
         except Exception as ex:
             traceback.print_exc()
-            Global.is_called = False
-        finally:
-            Global.is_called = False
 
 
-class helper():
-    def setVal(self, Global, ):
-        helper.Global = Global
 
-    def getVal(self):
-        return helper.Global
-
-
-rpc_helper = helper()
-
-
-def serve(Global):
+def serve():
     print("start serving rpc")
-    rpc_helper.setVal( Global, )
     grpcServer = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
     face_pb2_grpc.add_FaceServiceServicer_to_server(FaceService(), grpcServer)
 
@@ -118,18 +101,11 @@ def serve(Global):
     print("waiting for incomming connection at {0}:{1}".format(_HOST, _PORT))
     # grpcServer.wait_for_termination()
     while True:
-        if Global.is_exit:
+        if exit:
             break
 
-def setFrame(Global,frame):
-    Global.frame = frame
-
-def displayResult(Global,frame_process):
-    face_names = Global.face_names
-    face_locations = Global.face_locations
-
+def displayResult(frame_process):
     # Display the results
-
     for (top, right, bottom, left), name in zip(face_locations, face_names):
         # Draw a box around the face
         cv2.rectangle(frame_process, (left, top), (right, bottom), (0, 0, 255), 2)
@@ -139,7 +115,7 @@ def displayResult(Global,frame_process):
         font = cv2.FONT_HERSHEY_DUPLEX
         cv2.putText(frame_process, name, (left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1)
 
-def capture1(Global):
+def capture1():
     # Get a reference to webcam #0 (the default one)
     video_capture = cv2.VideoCapture(0)
 
@@ -151,9 +127,9 @@ def capture1(Global):
         ret, frame = video_capture.read()
 
         if process_this_frame:
-            setFrame(Global,frame)
-            if  Global.is_called:
-            displayResult(Global,frame)
+            global gframe
+            gframe = frame
+            displayResult(frame)
 
         process_this_frame = not process_this_frame
 
@@ -170,22 +146,8 @@ def capture1(Global):
 
 
 def run():
-    # Global variables
-    Global = Manager().Namespace()
-    Global.buff_num = 1
-    Global.read_num = 1
-    Global.write_num = 1
-    Global.is_exit = False
-    Global.is_called = False
-    Global.face_names = []
-    Global.face_locations = []
-    read_frame_list = Manager().dict()
-    write_frame_list = Manager().dict()
-
-    Process(target=capture1, args=(Global,)).start()
-    serve(Global)
+    Process(target=capture1).start()
+    serve()
 
 if __name__ == '__main__':
-    # threading.Thread(target=scanDetector).start()
-    # capture()
     run()

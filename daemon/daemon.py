@@ -150,17 +150,13 @@ def capture1(Global):
         # Grab a single frame of video
         ret, frame = video_capture.read()
 
-        # Rotate 90 degrees
-        frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
-
         if process_this_frame:
             setFrame(Global,frame)
+            if  Global.is_called:
             displayResult(Global,frame)
 
         process_this_frame = not process_this_frame
 
-        cv2.namedWindow("Video", cv2.WND_PROP_FULLSCREEN)
-        cv2.setWindowProperty("Video", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         # Display the resulting image
         frame = cv2.flip(frame, 0)
         cv2.imshow('Video', frame)
